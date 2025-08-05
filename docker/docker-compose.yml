@@ -1,0 +1,28 @@
+services:
+  dataset_analyzer:
+    user: ${UID}:${GID}
+    build:
+      context: ../
+      dockerfile: ./docker/Dockerfile
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+        limits:
+          memory: 16g
+    runtime: nvidia
+    tty: true
+    # user: $DOCKER_USER
+    environment:
+      - DISPLAY=${DISPLAY}
+    ports:
+      - "8050:8050"
+    volumes:
+      - ../:/dataset_analyzer
+      - ../../outputs:/dataset
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      # - /etc/passwd:/etc/passwd:ro
+      # - /etc/group:/etc/group:ro

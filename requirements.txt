@@ -1,0 +1,19 @@
+opencv-contrib-python
+numpy>=1.17
+scipy>=1.3.1
+scikit-learn>=0.22
+numba>=0.51.2
+pynndescent>=0.5
+tbb>=2019.0
+tqdm
+scikit-image
+tensorflow-gpu==2.10.1
+umap-learn==0.5.5
+spectral-metric
+
+# plot_all実行後に追加
+alphashape
+descartes
+pyglet==1.5.27 # Added for trimesh viewer compatibility
+dash
+pyrender # Added for offscreen rendering

@@ -1,0 +1,6 @@
+[submodule "external/spectral-metric"]
+	path = external/spectral-metric
+	url = https://github.com/Dref360/spectral-metric.git
+[submodule "external/umap"]
+	path = external/umap
+	url = https://github.com/lmcinnes/umap.git
