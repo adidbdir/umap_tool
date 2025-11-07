@@ -22,13 +22,48 @@ def clear_scene():
             pass
 
 
-def import_obj(path: str):
+def import_model(path: str):
     if not os.path.exists(path):
         raise FileNotFoundError(path)
-    try:
-        bpy.ops.wm.obj_import(filepath=path)
-    except AttributeError:
-        bpy.ops.import_scene.obj(filepath=path)
+    ext = os.path.splitext(path)[1].lower()
+    # OBJ
+    if ext == ".obj":
+        try:
+            bpy.ops.wm.obj_import(filepath=path)
+        except Exception:
+            bpy.ops.import_scene.obj(filepath=path)
+        return
+    # GLB/GLTF
+    if ext in {".glb", ".gltf"}:
+        bpy.ops.import_scene.gltf(filepath=path)
+        return
+    # PLY
+    if ext == ".ply":
+        try:
+            bpy.ops.wm.ply_import(filepath=path)
+        except Exception:
+            bpy.ops.import_mesh.ply(filepath=path)
+        return
+    # STL
+    if ext == ".stl":
+        try:
+            bpy.ops.wm.stl_import(filepath=path)
+        except Exception:
+            bpy.ops.import_mesh.stl(filepath=path)
+        return
+    # FBX
+    if ext == ".fbx":
+        bpy.ops.import_scene.fbx(filepath=path)
+        return
+    # DAE (Collada)
+    if ext == ".dae":
+        try:
+            bpy.ops.wm.collada_import(filepath=path)
+        except Exception:
+            # Some Blender versions may expose it under import_scene
+            bpy.ops.import_scene.dae(filepath=path)
+        return
+    raise ValueError(f"Unsupported extension for import: {ext}")
 
 
 def compute_bounds():
@@ -92,7 +127,7 @@ def render_views(obj_path: str, out_dir: str, num_views: int):
     os.makedirs(out_dir, exist_ok=True)
 
     clear_scene()
-    import_obj(obj_path)
+    import_model(obj_path)
 
     center, max_dim = compute_bounds()
     ensure_materials()
