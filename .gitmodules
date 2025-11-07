@@ -4,3 +4,9 @@
 [submodule "external/umap"]
 	path = external/umap
 	url = https://github.com/lmcinnes/umap.git
+[submodule "external/LLaVA"]
+	path = external/LLaVA
+	url = https://github.com/haotian-liu/LLaVA.git
+[submodule "external/ULIP"]
+	path = external/ULIP
+	url = https://github.com/adidbdir/ULIP.git

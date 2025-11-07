@@ -8,10 +8,33 @@ import trimesh
 import pandas as pd
 import json
 from typing import Tuple, List, Union
+import hashlib
 from umap.parametric_umap import load_ParametricUMAP
 
+# Supported 3D model extensions for wildcard selection
+DEFAULT_3D_EXTENSIONS: List[str] = [
+    "obj", "glb", "gltf", "ply", "stl", "fbx", "dae"
+]
+
+
+def parse_extensions_arg(prefix: str) -> List[str]:
+    """Parse --prefix argument into a list of extensions.
+
+    - Accepts comma-separated values: "obj,ply,stl"
+    - Accepts wildcards: any/*/all/3d/all3d -> DEFAULT_3D_EXTENSIONS
+    - Normalizes by stripping spaces, lowercasing, and removing leading dots
+    """
+    if prefix is None:
+        return DEFAULT_3D_EXTENSIONS
+    value = prefix.strip().lower()
+    if value in {"any", "*", "all", "3d", "all3d"} or value == "":
+        return DEFAULT_3D_EXTENSIONS
+    parts = [p.strip().lower().lstrip('.') for p in value.split(',') if p.strip()]
+    return sorted(set(parts)) if parts else DEFAULT_3D_EXTENSIONS
+
 # Import the feature extractors from train_3d.py
-from train_3d import FeatureExtractor, PointCloudExtractor, PointNetExtractor, create_feature_extractor, load_and_process_mesh
+from feature_extractors import FeatureExtractor
+from train_3d import create_feature_extractor, load_and_process_mesh
 
 
 def parse_args():
@@ -42,13 +65,13 @@ def parse_args():
         help="Number of parallel processes"
     )
     parser.add_argument(
-        "--prefix", default="obj", type=str, 
-        help="Extension of 3D models to test"
+        "--prefix", default="obj", type=str,
+        help="File extension(s) to test (e.g., 'obj' or 'obj,ply,stl' or 'any')"
     )
     # Feature extraction parameters (will be loaded from config if available)
     parser.add_argument(
         "--feature-extractor", default=None, type=str,
-        choices=["pointcloud", "pointnet"],
+        choices=["pointcloud", "pointnet", "ulip", "llava"],
         help="Feature extraction method (auto-detected from model config if not specified)"
     )
     parser.add_argument(
@@ -58,6 +81,10 @@ def parse_args():
     parser.add_argument(
         "--pointnet-feature-dim", default=None, type=int,
         help="PointNet feature dimension (auto-detected from model config if not specified)"
+    )
+    parser.add_argument(
+        "--seed", default=None, type=int,
+        help="Global seed for deterministic sampling. Per-file seed is derived from seed^hash(path)."
     )
     return parser.parse_args()
 
@@ -85,6 +112,7 @@ def create_embedding_and_target(
     embedding_dict: dict,
     path_dict: dict,
     label_dict: dict,  # New: store labels corresponding to embeddings
+    base_seed: int | None = None,
 ):
     """Process paths and create embeddings using specified feature extractor."""
     mapper = load_ParametricUMAP(model_dir)
@@ -100,7 +128,13 @@ def create_embedding_and_target(
 
         try:
             # Extract features using the specified feature extractor
-            features = feature_extractor.extract_features(mesh)
+            # Pass source_path so LLaVAExtractor can render multi-view images
+            per_file_seed = None
+            if base_seed is not None:
+                # Stable 32-bit hash from path (independent of PYTHONHASHSEED)
+                h = int(hashlib.md5(p_str.encode('utf-8'), usedforsecurity=False).hexdigest()[:8], 16)
+                per_file_seed = base_seed ^ (h & 0xFFFFFFFF)
+            features = feature_extractor.extract_features(mesh, source_path=p_str, seed=per_file_seed)
             
             # Reshape for UMAP transform
             data_for_transform = features.reshape(1, -1)
@@ -127,21 +161,27 @@ def create_embedding_and_target(
 def collect_paths_from_directories(input_dirs: List[str], folder_labels: List[str], prefix: str, max_per_dir: int) -> List[Tuple[str, str]]:
     """Collect paths from multiple directories with their corresponding labels."""
     all_paths_with_labels = []
+    extensions = parse_extensions_arg(prefix)
     
     for i, input_dir in enumerate(input_dirs):
         label = folder_labels[i] if i < len(folder_labels) else os.path.basename(input_dir.rstrip('/'))
         
-        # Find files in this directory
-        path_pattern = os.path.join(input_dir, "**", f"*.{prefix}")
-        paths = glob.glob(path_pattern, recursive=True)
+        # Find files in this directory across selected extensions
+        paths: List[str] = []
+        for ext in extensions:
+            path_pattern = os.path.join(input_dir, "**", f"*.{ext}")
+            paths.extend(glob.glob(path_pattern, recursive=True))
+        # De-duplicate while preserving order
+        seen = set()
+        paths = [p for p in paths if not (p in seen or seen.add(p))]
         
         if not paths:
-            print(f"Warning: No files found for pattern: {path_pattern}")
+            print(f"Warning: No files found in {input_dir} for extensions: {extensions}")
             continue
             
         # Limit number of files per directory
         sorted_paths = sorted(paths)[:max_per_dir]
-        print(f"Found {len(sorted_paths)} files in {input_dir} (label: {label})")
+        print(f"Found {len(sorted_paths)} files in {input_dir} (label: {label}, exts: {extensions})")
         
         # Add (path, label) tuples
         for path in sorted_paths:
@@ -150,7 +190,7 @@ def collect_paths_from_directories(input_dirs: List[str], folder_labels: List[st
     return all_paths_with_labels
 
 
-def run(paths_with_labels: List[Tuple[str, str]], model_dir: str, feature_extractor: FeatureExtractor, parallel: int) -> Tuple[np.ndarray, List[str], List[str]]:
+def run(paths_with_labels: List[Tuple[str, str]], model_dir: str, feature_extractor: FeatureExtractor, parallel: int, base_seed: int | None) -> Tuple[np.ndarray, List[str], List[str]]:
     """Run embedding extraction with multiprocessing."""
     manager = multiprocessing.Manager()
     embedding_dict = manager.dict()
@@ -168,7 +208,7 @@ def run(paths_with_labels: List[Tuple[str, str]], model_dir: str, feature_extrac
             continue
         p = multiprocessing.Process(
             target=create_embedding_and_target,
-            args=(i, model_dir, div_paths_with_labels[i], feature_extractor, embedding_dict, path_dict, label_dict),
+            args=(i, model_dir, div_paths_with_labels[i], feature_extractor, embedding_dict, path_dict, label_dict, base_seed),
         )
         jobs.append(p)
         p.start()
@@ -218,6 +258,7 @@ def main():
     print(f"  N Points: {n_points}")
     print(f"  Input directories: {args.input_dirs}")
     print(f"  Folder labels: {folder_labels}")
+    print(f"  Extensions: {parse_extensions_arg(args.prefix)}")
     if feature_extractor_type == "pointnet":
         print(f"  PointNet Feature Dim: {pointnet_feature_dim}")
 
@@ -247,7 +288,7 @@ def main():
 
     # Extract embeddings
     embeddings, processed_model_paths, processed_labels = run(
-        paths_with_labels, args.model_dir, feature_extractor, args.parallel
+        paths_with_labels, args.model_dir, feature_extractor, args.parallel, args.seed
     )
 
     if embeddings.size == 0:
