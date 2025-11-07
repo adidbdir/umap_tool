@@ -137,5 +137,6 @@ dmypy.json
 external/
 input/
 output/
+outputs/
 dataset/
 data/
