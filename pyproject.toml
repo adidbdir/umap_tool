@@ -9,6 +9,7 @@ dependencies = [
     "easydict>=1.13",
     "keras>=3.6.0",
     "knn-cuda",
+    "llava",
     "numba>=0.60.0",
     "numpy>=1.26.4",
     "objaverse>=0.1.7",
@@ -39,3 +40,4 @@ explicit = true
 [tool.uv.sources]
 pointnet2-ops = { path = "external/Pointnet2_PyTorch/pointnet2_ops_lib" }
 knn-cuda = { url = "https://github.com/unlimblue/KNN_CUDA/releases/download/0.2/KNN_CUDA-0.2-py3-none-any.whl" }
+llava = { path = "external/LLaVA", editable = true }
