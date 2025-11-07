@@ -1,0 +1,13 @@
+{
+  "input": { "dir": "dataset/3dmodel/strawberry", "prefix": "obj", "n_points": 2048 },
+  "output": { "dir": "output/train_3d/pointnet/strawberry" },
+  "umap": { "encoder_type": "pointnet", "n_components": 3 },
+  "extractor": {
+    "type": "pointnet",
+    "pointnet": { "feature_dim": 1024 },
+    "ulip": { "ckpt_path": "external/ULIP/weights/ULIP-2-PointBERT-10k-xyzrgb-pc-vit_g-objaverse_shapenet-pretrained.pt", "model": "ULIP_PointBERT" },
+    "llava": { "model_path": null, "model_name": "llava-v1.5-7b", "n_views": 8, "blender_bin": "blender" }
+  }
+}
+
+
